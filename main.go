@@ -3,14 +3,21 @@ package main
 import (
 	"crypto/tls"
 	"crypto/x509"
-	// "fmt"
+	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/httputil"
-	// "url"
 
 	"github.com/gregjones/httpcache"
 	"github.com/kr/mitm"
+)
+
+var (
+	redirectHost       = flag.String("redirect-host", "127.0.0.1", "host to redirect calls")
+	redirectPort       = flag.Int("redirect-port", 1234, "port to redirect calls")
+	krakenRegistryHost = flag.String("kraken-registry-host", "localhost", "host of kraken registry")
+	krakenRegistryPort = flag.Int("kraken-registry-port", 8081, "port of kraken registry")
 )
 
 type codeRecorder struct {
@@ -38,7 +45,7 @@ func genCA() (cert tls.Certificate, err error) {
 
 func transformRequest(r *http.Request) (*http.Request, error) {
 	reqUrl := r.URL
-	reqUrl.Host = "127.0.0.1:1234"
+	reqUrl.Host = fmt.Sprintf("%s:%d", *redirectHost, *redirectPort)
 	newReq, err := http.NewRequest("POST", reqUrl.String(), nil)
 	if err != nil {
 		return nil, err
@@ -46,7 +53,7 @@ func transformRequest(r *http.Request) (*http.Request, error) {
 	q := r.URL.Query()
 	image := q.Get("fromImage")
 	if image != "" {
-		newImage := "localhost:8081/" + image
+		newImage := fmt.Sprintf("%s:%d/%s", *krakenRegistryHost, *krakenRegistryPort, image)
 		q.Set("fromImage", newImage)
 	}
 	newReq.URL.RawQuery = q.Encode()

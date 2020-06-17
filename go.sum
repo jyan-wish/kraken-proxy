@@ -1,0 +1,4 @@
+github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79 h1:+ngKgrYPPJrOjhax5N+uePQ0Fh1Z7PheYoUI/0nzkPA=
+github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79/go.mod h1:FecbI9+v66THATjSRHfNgh1IVFe/9kFxbXtjV0ctIMA=
+github.com/kr/mitm v0.0.0-20150606021707-049d5f05726a h1:kobIMoQVQ9fhCyd6/PBUjpzLAGbDRUIHBH0pHJXr5Qo=
+github.com/kr/mitm v0.0.0-20150606021707-049d5f05726a/go.mod h1:h/l6ijgBBCRyy+gZcv8akIK2jeIgbRuQgoGJhUYE79I=
