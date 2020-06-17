@@ -14,6 +14,7 @@ import (
 )
 
 var (
+	listenPort         = flag.Int("listen-port", 6000, "port to listen on")
 	redirectHost       = flag.String("redirect-host", "127.0.0.1", "host to redirect calls")
 	redirectPort       = flag.Int("redirect-port", 1234, "port to redirect calls")
 	krakenRegistryHost = flag.String("kraken-registry-host", "localhost", "host of kraken registry")
@@ -85,9 +86,9 @@ func main() {
 		},
 	}
 	s := &http.Server{
-		Addr:    ":1235",
+		Addr:    fmt.Sprintf(":%d", *listenPort),
 		Handler: p,
 	}
-	log.Println("serving")
+	log.Printf("Serving on port %d\n", *listenPort)
 	log.Fatal(s.ListenAndServe())
 }
