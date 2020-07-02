@@ -3,11 +3,15 @@ package main
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
+	"regexp"
 
 	"github.com/gregjones/httpcache"
 	"github.com/kr/mitm"
@@ -15,10 +19,10 @@ import (
 
 var (
 	listenPort         = flag.Int("listen-port", 6000, "port to listen on")
-	redirectHost       = flag.String("redirect-host", "127.0.0.1", "host to redirect calls")
-	redirectPort       = flag.Int("redirect-port", 1234, "port to redirect calls")
 	krakenRegistryHost = flag.String("kraken-registry-host", "localhost", "host of kraken registry")
 	krakenRegistryPort = flag.Int("kraken-registry-port", 8081, "port of kraken registry")
+	tlsCert            = flag.String("tls-cert", "", "file container the tls certificate")
+	tlsKey             = flag.String("tls-key", "", "file container the private key")
 )
 
 type codeRecorder struct {
@@ -31,56 +35,69 @@ func (w *codeRecorder) WriteHeader(code int) {
 	w.code = code
 }
 
-func genCA() (cert tls.Certificate, err error) {
-	certPEM, keyPEM, err := mitm.GenCA("test")
-	if err != nil {
-		return tls.Certificate{}, err
+func getCA() (*tls.Certificate, error) {
+	if *tlsCert == "" {
+		log.Fatalf("Missing required flag tls-cert")
 	}
-	cert, err = tls.X509KeyPair(certPEM, keyPEM)
-	if err != nil {
-		return tls.Certificate{}, err
+	if *tlsKey == "" {
+		log.Fatalf("Missing required flag tls-key")
 	}
-	cert.Leaf, err = x509.ParseCertificate(cert.Certificate[0])
-	return cert, err
-}
-
-func transformRequest(r *http.Request) (*http.Request, error) {
-	reqUrl := r.URL
-	reqUrl.Host = fmt.Sprintf("%s:%d", *redirectHost, *redirectPort)
-	newReq, err := http.NewRequest("POST", reqUrl.String(), nil)
+	cert, err := ioutil.ReadFile(*tlsCert)
 	if err != nil {
 		return nil, err
 	}
-	q := r.URL.Query()
-	image := q.Get("fromImage")
-	if image != "" {
-		newImage := fmt.Sprintf("%s:%d/%s", *krakenRegistryHost, *krakenRegistryPort, image)
-		q.Set("fromImage", newImage)
+	key, err := ioutil.ReadFile(*tlsKey)
+	if err != nil {
+		return nil, err
 	}
-	newReq.URL.RawQuery = q.Encode()
-	return newReq, nil
+	certBlock, _ := pem.Decode([]byte(cert))
+	keyBlock, _ := pem.Decode([]byte(key))
+	certPem := pem.EncodeToMemory(&pem.Block{
+		Type:  certBlock.Type,
+		Bytes: certBlock.Bytes,
+	})
+	keyPem := pem.EncodeToMemory(&pem.Block{
+		Type:  keyBlock.Type,
+		Bytes: keyBlock.Bytes,
+	})
+	finalCert, err := tls.X509KeyPair(certPem, keyPem)
+	if err != nil {
+		return nil, err
+	}
+	finalCert.Leaf, err = x509.ParseCertificate(finalCert.Certificate[0])
+	return &finalCert, err
+}
+
+func transformRequest(r *http.Request) {
+	if r.Method == "GET" {
+		imgManifest := regexp.MustCompile("/v2/(?P<Name>.*)/manifests/(?P<Reference>.*)")
+		imgBlob := regexp.MustCompile("/v2/(?P<Name>.*)/blobs/(?P<Digest>.*)")
+		if imgManifest.MatchString(r.RequestURI) || imgBlob.MatchString(r.RequestURI) {
+			newUrl := fmt.Sprintf("https://%s:%d%s", *krakenRegistryHost, *krakenRegistryPort, r.RequestURI)
+			r.URL, _ = url.Parse(newUrl)
+			r.Host = r.URL.Host
+		}
+	}
 }
 
 func main() {
-	cert, err := genCA()
+	flag.Parse()
+	cert, err := getCA()
 	if err != nil {
 		panic(err)
 	}
 	tp := httpcache.NewMemoryCacheTransport()
 	tp.MarkCachedResponses = true
 	p := &mitm.Proxy{
-		CA: &cert,
+		CA: cert,
 		Wrap: func(upstream http.Handler) http.Handler {
 			// Hack in the caching transport for this RP
 			rp := upstream.(*httputil.ReverseProxy)
 			rp.Transport = tp
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				cr := &codeRecorder{ResponseWriter: w}
-				newReq, err := transformRequest(r)
-				if err != nil {
-					log.Printf("Error: %v\n", err)
-				}
-				rp.ServeHTTP(cr, newReq)
+				transformRequest(r)
+				rp.ServeHTTP(cr, r)
 				log.Println("Got Status:", cr.code)
 			})
 		},
