@@ -68,6 +68,19 @@ func getCA() (*tls.Certificate, error) {
 	return &finalCert, err
 }
 
+func genCA() (*tls.Certificate, error) {
+	certPem, keyPem, err := mitm.GenCA("proxy")
+	if err != nil {
+		return nil, err
+	}
+	finalCert, err := tls.X509KeyPair(certPem, keyPem)
+	if err != nil {
+		return nil, err
+	}
+	finalCert.Leaf, err = x509.ParseCertificate(finalCert.Certificate[0])
+	return &finalCert, err
+}
+
 func transformRequest(r *http.Request) {
 	if r.Method == "GET" {
 		imgManifest := regexp.MustCompile("/v2/(?P<Name>.*)/manifests/(?P<Reference>.*)")
@@ -83,6 +96,7 @@ func transformRequest(r *http.Request) {
 func main() {
 	flag.Parse()
 	cert, err := getCA()
+	// cert, err := genCA()
 	if err != nil {
 		panic(err)
 	}
