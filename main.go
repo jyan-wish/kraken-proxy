@@ -3,10 +3,8 @@ package main
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/pem"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -19,10 +17,7 @@ import (
 
 var (
 	listenPort         = flag.Int("listen-port", 6000, "port to listen on")
-	krakenRegistryHost = flag.String("kraken-registry-host", "localhost", "host of kraken registry")
 	krakenRegistryPort = flag.Int("kraken-registry-port", 8081, "port of kraken registry")
-	tlsCert            = flag.String("tls-cert", "", "file container the tls certificate")
-	tlsKey             = flag.String("tls-key", "", "file container the private key")
 )
 
 type codeRecorder struct {
@@ -35,31 +30,11 @@ func (w *codeRecorder) WriteHeader(code int) {
 	w.code = code
 }
 
-func getCA() (*tls.Certificate, error) {
-	if *tlsCert == "" {
-		log.Fatalf("Missing required flag tls-cert")
-	}
-	if *tlsKey == "" {
-		log.Fatalf("Missing required flag tls-key")
-	}
-	cert, err := ioutil.ReadFile(*tlsCert)
+func genCA() (*tls.Certificate, error) {
+	certPem, keyPem, err := mitm.GenCA("proxy")
 	if err != nil {
 		return nil, err
 	}
-	key, err := ioutil.ReadFile(*tlsKey)
-	if err != nil {
-		return nil, err
-	}
-	certBlock, _ := pem.Decode([]byte(cert))
-	keyBlock, _ := pem.Decode([]byte(key))
-	certPem := pem.EncodeToMemory(&pem.Block{
-		Type:  certBlock.Type,
-		Bytes: certBlock.Bytes,
-	})
-	keyPem := pem.EncodeToMemory(&pem.Block{
-		Type:  keyBlock.Type,
-		Bytes: keyBlock.Bytes,
-	})
 	finalCert, err := tls.X509KeyPair(certPem, keyPem)
 	if err != nil {
 		return nil, err
@@ -73,7 +48,7 @@ func transformRequest(r *http.Request) {
 		imgManifest := regexp.MustCompile("/v2/(?P<Name>.*)/manifests/(?P<Reference>.*)")
 		imgBlob := regexp.MustCompile("/v2/(?P<Name>.*)/blobs/(?P<Digest>.*)")
 		if imgManifest.MatchString(r.RequestURI) || imgBlob.MatchString(r.RequestURI) {
-			newUrl := fmt.Sprintf("https://%s:%d%s", *krakenRegistryHost, *krakenRegistryPort, r.RequestURI)
+			newUrl := fmt.Sprintf("https://localhost:%d%s", *krakenRegistryPort, r.RequestURI)
 			r.URL, _ = url.Parse(newUrl)
 			r.Host = r.URL.Host
 		}
@@ -82,7 +57,7 @@ func transformRequest(r *http.Request) {
 
 func main() {
 	flag.Parse()
-	cert, err := getCA()
+	cert, err := genCA()
 	if err != nil {
 		panic(err)
 	}
