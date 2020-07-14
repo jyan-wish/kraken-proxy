@@ -18,11 +18,11 @@ import (
 )
 
 var (
-	listenPort         = flag.Int("listen-port", 6000, "port to listen on")
+	listenPort         = flag.Int("listen-port", 2000, "port to listen on")
 	krakenRegistryHost = flag.String("kraken-registry-host", "localhost", "host of kraken registry")
-	krakenRegistryPort = flag.Int("kraken-registry-port", 8081, "port of kraken registry")
-	tlsCert            = flag.String("tls-cert", "", "file container the tls certificate")
-	tlsKey             = flag.String("tls-key", "", "file container the private key")
+	krakenRegistryPort = flag.Int("kraken-registry-port", 5000, "port of kraken registry")
+	tlsCert            = flag.String("tls-cert", "./certs/cert.pem", "file container the tls certificate")
+	tlsKey             = flag.String("tls-key", "./certs/key.pem", "file container the private key")
 )
 
 type codeRecorder struct {
@@ -69,7 +69,7 @@ func getCA() (*tls.Certificate, error) {
 }
 
 func genCA() (*tls.Certificate, error) {
-	certPem, keyPem, err := mitm.GenCA("proxy")
+	certPem, keyPem, err := mitm.GenCA("registry-1.docker.io")
 	if err != nil {
 		return nil, err
 	}
@@ -95,8 +95,8 @@ func transformRequest(r *http.Request) {
 
 func main() {
 	flag.Parse()
-	cert, err := getCA()
-	// cert, err := genCA()
+	// cert, err := getCA()
+	cert, err := genCA()
 	if err != nil {
 		panic(err)
 	}
