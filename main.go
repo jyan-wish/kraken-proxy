@@ -83,10 +83,20 @@ func genCA() (*tls.Certificate, error) {
 
 func transformRequest(r *http.Request) {
 	if r.Method == "GET" {
-		imgManifest := regexp.MustCompile("/v2/(?P<Name>.*)/manifests/(?P<Reference>.*)")
-		imgBlob := regexp.MustCompile("/v2/(?P<Name>.*)/blobs/(?P<Digest>.*)")
-		if imgManifest.MatchString(r.RequestURI) || imgBlob.MatchString(r.RequestURI) {
-			newUrl := fmt.Sprintf("https://%s:%d%s", *krakenRegistryHost, *krakenRegistryPort, r.RequestURI)
+		imgManifest := regexp.MustCompile("(/v2/)(?P<Name>.*)(/manifests/)(?P<Reference>.*)")
+		imgBlob := regexp.MustCompile("(/v2/)(?P<Name>.*)(/blobs/)(?P<Digest>.*)")
+		newUri := r.RequestURI
+		if imgManifest.MatchString(r.RequestURI) {
+			match := imgManifest.FindStringSubmatch(r.RequestURI)
+			newUri = fmt.Sprintf("%s%s/%s%s%s", match[1], r.Host, match[2], match[3], match[4])
+		}
+		if imgBlob.MatchString(r.RequestURI) {
+			match := imgBlob.FindStringSubmatch(r.RequestURI)
+			newUri = fmt.Sprintf("%s%s/%s%s%s", match[1], r.Host, match[2], match[3], match[4])
+		}
+		if newUri != r.RequestURI {
+			newUrl := fmt.Sprintf("https://%s:%d%s", *krakenRegistryHost, *krakenRegistryPort, newUri)
+			log.Println("REQ: ", newUrl)
 			r.URL, _ = url.Parse(newUrl)
 			r.Host = r.URL.Host
 		}
