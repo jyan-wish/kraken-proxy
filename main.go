@@ -6,11 +6,11 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/httputil"
-	"net/url"
 	"regexp"
 
 	"github.com/gregjones/httpcache"
@@ -28,6 +28,7 @@ var (
 type codeRecorder struct {
 	http.ResponseWriter
 	code int
+	req  *http.Request
 }
 
 func (w *codeRecorder) WriteHeader(code int) {
@@ -81,7 +82,7 @@ func genCA() (*tls.Certificate, error) {
 	return &finalCert, err
 }
 
-func transformRequest(r *http.Request) {
+func transformRequest(r *http.Request) (*http.Request, error) {
 	if r.Method == "GET" {
 		imgManifest := regexp.MustCompile("(/v2/)(?P<Name>.*)(/manifests/)(?P<Reference>.*)")
 		imgBlob := regexp.MustCompile("(/v2/)(?P<Name>.*)(/blobs/)(?P<Digest>.*)")
@@ -96,17 +97,22 @@ func transformRequest(r *http.Request) {
 		}
 		if newUri != r.RequestURI {
 			newUrl := fmt.Sprintf("https://%s:%d%s", *krakenRegistryHost, *krakenRegistryPort, newUri)
-			log.Println("REQ: ", newUrl)
-			r.URL, _ = url.Parse(newUrl)
-			r.Host = r.URL.Host
+			newReq, err := http.NewRequest(r.Method, newUrl, r.Body)
+			if err != nil {
+				return nil, err
+			}
+			return newReq, nil
+		} else {
+			return nil, nil
 		}
 	}
+	return nil, nil
 }
 
 func main() {
 	flag.Parse()
-	// cert, err := getCA()
-	cert, err := genCA()
+	cert, err := getCA()
+	// cert, err := genCA()
 	if err != nil {
 		panic(err)
 	}
@@ -120,8 +126,28 @@ func main() {
 			rp.Transport = tp
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				cr := &codeRecorder{ResponseWriter: w}
-				transformRequest(r)
-				rp.ServeHTTP(cr, r)
+				newReq, err := transformRequest(r)
+				if err != nil {
+					fmt.Printf("Error when transforming request: %+v\n", err)
+				}
+				if newReq != nil {
+					res, err := tp.RoundTrip(newReq)
+					if err != nil {
+						log.Println("ERROR")
+					}
+					if res.StatusCode == 200 {
+						log.Println("Successfully rerouted to alternative registry")
+						for key, _ := range res.Header {
+							cr.Header().Add(key, res.Header.Get(key))
+						}
+						io.Copy(cr, res.Body)
+					} else {
+						log.Println("Unsuccessful reroute, falling back to upstream")
+						rp.ServeHTTP(cr, r)
+					}
+				} else {
+					rp.ServeHTTP(cr, r)
+				}
 				log.Println("Got Status:", cr.code)
 			})
 		},
