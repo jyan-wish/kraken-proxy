@@ -111,8 +111,8 @@ func transformRequest(r *http.Request) (*http.Request, error) {
 
 func main() {
 	flag.Parse()
-	cert, err := getCA()
-	// cert, err := genCA()
+	// cert, err := getCA()
+	cert, err := genCA()
 	if err != nil {
 		panic(err)
 	}
@@ -121,7 +121,6 @@ func main() {
 	p := &mitm.Proxy{
 		CA: cert,
 		Wrap: func(upstream http.Handler) http.Handler {
-			// Hack in the caching transport for this RP
 			rp := upstream.(*httputil.ReverseProxy)
 			rp.Transport = tp
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -132,10 +131,7 @@ func main() {
 				}
 				if newReq != nil {
 					res, err := tp.RoundTrip(newReq)
-					if err != nil {
-						log.Println("ERROR")
-					}
-					if res.StatusCode == 200 {
+					if err == nil && res.StatusCode == 200 {
 						log.Println("Successfully rerouted to alternative registry")
 						for key, _ := range res.Header {
 							cr.Header().Add(key, res.Header.Get(key))
