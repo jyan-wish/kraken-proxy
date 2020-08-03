@@ -53,7 +53,7 @@ func transformRequest(r *http.Request, config *config.Config) (*http.Request, er
 			newUri = fmt.Sprintf("%s%s/%s%s%s", match[1], r.Host, match[2], match[3], match[4])
 		}
 		if newUri != r.RequestURI {
-			newUrl := fmt.Sprintf("https://%s:%d%s", config.DesinationHost, config.DestinationPort, newUri)
+			newUrl := fmt.Sprintf("https://%s:%s%s", config.DesinationHost, config.DestinationPort, newUri)
 			newReq, err := http.NewRequest(r.Method, newUrl, r.Body)
 			if err != nil {
 				return nil, err
@@ -66,7 +66,7 @@ func transformRequest(r *http.Request, config *config.Config) (*http.Request, er
 	return nil, nil
 }
 
-func StartProxy(conf *config.Config) {
+func GenerateProxy(conf *config.Config) *mitm.Proxy {
 	cert, err := genCA()
 	if err != nil {
 		panic(err)
@@ -109,10 +109,5 @@ func StartProxy(conf *config.Config) {
 			})
 		},
 	}
-	s := &http.Server{
-		Addr:    fmt.Sprintf(":%d", conf.ListenPort),
-		Handler: p,
-	}
-	log.Printf("Serving on port %d\n", conf.ListenPort)
-	log.Fatal(s.ListenAndServe())
+	return p
 }
