@@ -6,13 +6,12 @@ import (
 )
 
 type MockServer struct {
-	Port      int
 	Responses map[string]string
 }
 
-func CreateTestServer(port int) *MockServer {
+func CreateTestServer() *MockServer {
 	responses := make(map[string]string)
-	return &MockServer{port, responses}
+	return &MockServer{Responses: responses}
 }
 
 func (ms *MockServer) AddResponse(uri string, resp string) {
@@ -24,6 +23,5 @@ func (ms *MockServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, resp)
 		return
 	}
-	fmt.Fprint(w, "")
-	//Throw some error here?
+	http.Error(w, "Not Found", 404)
 }
