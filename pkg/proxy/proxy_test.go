@@ -98,7 +98,7 @@ func TestImageLayerTransformRequest(t *testing.T) {
 
 func TestImageManifestTransformRequest(t *testing.T) {
 	uri := imgManifestUri()
-	originalReq, err := http.NewRequest("GET", "https://google.com:1234"+uri, nil)
+	originalReq, err := http.NewRequest("GET", "https://host1.com:1234"+uri, nil)
 	handleError(err, t)
 	newHost := "host2.com:1234"
 	newReq := TransformRequest(originalReq, newHost)
