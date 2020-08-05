@@ -39,31 +39,32 @@ func genCA() (*tls.Certificate, error) {
 	return &finalCert, err
 }
 
-func transformRequest(r *http.Request, config *config.Config) (*http.Request, error) {
+func TransformRequest(r *http.Request, newAddr string) *http.Request {
 	if r.Method == "GET" {
-		imgManifest := regexp.MustCompile("(/v2/)(?P<Name>.*)(/manifests/)(?P<Reference>.*)")
-		imgBlob := regexp.MustCompile("(/v2/)(?P<Name>.*)(/blobs/)(?P<Digest>.*)")
-		newUri := r.RequestURI
-		if imgManifest.MatchString(r.RequestURI) {
-			match := imgManifest.FindStringSubmatch(r.RequestURI)
+		imgManifest := regexp.MustCompile("^(/v2/)(?P<Name>.*)(/manifests/)(?P<Reference>.*)")
+		imgBlob := regexp.MustCompile("^(/v2/)(?P<Name>.*)(/blobs/)(?P<Digest>.*)")
+		newUri := r.URL.Path
+		if imgManifest.MatchString(r.URL.Path) {
+			match := imgManifest.FindStringSubmatch(r.URL.Path)
 			newUri = fmt.Sprintf("%s%s/%s%s%s", match[1], r.Host, match[2], match[3], match[4])
 		}
-		if imgBlob.MatchString(r.RequestURI) {
-			match := imgBlob.FindStringSubmatch(r.RequestURI)
+		if imgBlob.MatchString(r.URL.Path) {
+			match := imgBlob.FindStringSubmatch(r.URL.Path)
 			newUri = fmt.Sprintf("%s%s/%s%s%s", match[1], r.Host, match[2], match[3], match[4])
 		}
-		if newUri != r.RequestURI {
-			newUrl := fmt.Sprintf("https://%s:%s%s", config.DesinationHost, config.DestinationPort, newUri)
+		if newUri != r.URL.Path {
+			newUrl := fmt.Sprintf("http://%s%s", newAddr, newUri)
 			newReq, err := http.NewRequest(r.Method, newUrl, r.Body)
 			if err != nil {
-				return nil, err
+				fmt.Println("Error Tranforming Request: ", err)
+				return nil
 			}
-			return newReq, nil
+			return newReq
 		} else {
-			return nil, nil
+			return nil
 		}
 	}
-	return nil, nil
+	return nil
 }
 
 func GenerateProxy(conf *config.Config) *mitm.Proxy {
@@ -71,34 +72,35 @@ func GenerateProxy(conf *config.Config) *mitm.Proxy {
 	if err != nil {
 		panic(err)
 	}
-	confi := &tls.Config{
+	tlsconf := &tls.Config{
 		InsecureSkipVerify: true,
 	}
 	tp := httpcache.NewMemoryCacheTransport()
 	tp.MarkCachedResponses = true
 	p := &mitm.Proxy{
 		CA:              cert,
-		TLSClientConfig: confi,
-		TLSServerConfig: confi,
+		TLSClientConfig: tlsconf,
+		TLSServerConfig: tlsconf,
 		Wrap: func(upstream http.Handler) http.Handler {
 			rp := upstream.(*httputil.ReverseProxy)
 			rp.Transport = tp
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				cr := &codeRecorder{ResponseWriter: w}
-				newReq, err := transformRequest(r, conf)
-				if err != nil {
-					fmt.Printf("Error when transforming request: %+v\n", err)
-				}
+
+				newReq := TransformRequest(r, fmt.Sprintf("%s:%s", conf.DesinationHost, conf.DestinationPort))
 				if newReq != nil {
 					res, err := tp.RoundTrip(newReq)
 					if err == nil && res.StatusCode == 200 {
 						log.Println("Successfully rerouted to alternative registry")
-						for key, _ := range res.Header {
+						for key := range res.Header {
 							cr.Header().Add(key, res.Header.Get(key))
 						}
+						cr.WriteHeader(res.StatusCode)
 						io.Copy(cr, res.Body)
+						if cr.code != 200 {
+							rp.ServeHTTP(cr, r)
+						}
 					} else {
-						fmt.Println(res, err)
 						log.Println("Unsuccessful reroute, falling back to upstream")
 						rp.ServeHTTP(cr, r)
 					}
