@@ -84,9 +84,9 @@ func handleError(e error, t *testing.T) {
 
 func TestImageLayerTransformRequest(t *testing.T) {
 	uri := imgLayerUri()
-	originalReq, err := http.NewRequest("GET", "https://google.com:1234"+uri, nil)
+	originalReq, err := http.NewRequest("GET", "https://host1.com:2384"+uri, nil)
 	handleError(err, t)
-	newHost := "host2.com:1234"
+	newHost := "host2.com:3742"
 	newReq := TransformRequest(originalReq, newHost)
 	if newReq == nil {
 		t.Fatalf("Expected to transform request: %s\n", originalReq.URL)
@@ -98,9 +98,9 @@ func TestImageLayerTransformRequest(t *testing.T) {
 
 func TestImageManifestTransformRequest(t *testing.T) {
 	uri := imgManifestUri()
-	originalReq, err := http.NewRequest("GET", "https://host1.com:1234"+uri, nil)
+	originalReq, err := http.NewRequest("GET", "https://host1.com:1253"+uri, nil)
 	handleError(err, t)
-	newHost := "host2.com:1234"
+	newHost := "host2.com:2394"
 	newReq := TransformRequest(originalReq, newHost)
 	if newReq == nil {
 		t.Fatalf("Expected to transform request: %s\n", originalReq.URL)
